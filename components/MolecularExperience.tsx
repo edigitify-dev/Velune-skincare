@@ -348,7 +348,7 @@ export default function MolecularExperience() {
       <div
         aria-hidden
         className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: "url('/bg/golden-glass-waves.png')" }}
+        style={{ backgroundImage: "url('/bg/golden-glass-waves.webp')" }}
       />
       <div
         ref={darkRef}

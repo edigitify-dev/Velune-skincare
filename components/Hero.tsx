@@ -10,10 +10,10 @@ const HeroLiquid = dynamic(() => import("./HeroLiquid"), { ssr: false });
 /* ───────────────────────── config – tune these when your real images arrive ───────────────────────── */
 
 const ASSETS = {
-  bottle: "/hero/bottle.png", // transparent PNG of the serum bottle (optional – a drawn placeholder is used until it exists)
-  face: "/hero/face.jpg", // close-up of the woman's face (optional – frame f_085 is used, colour-graded, until it exists)
+  bottle: "/hero/bottle.webp", // transparent PNG of the serum bottle (optional – a drawn placeholder is used until it exists)
+  face: "/hero/face.webp", // close-up of the woman's face (optional – frame f_085 is used, colour-graded, until it exists)
   faceFallback: "/sequence/f_085.webp",
-  flower: "/hero/flower.png", // transparent PNG of a white blossom (optional – SVG blossoms are used until it exists)
+  flower: "/hero/flower.webp", // transparent PNG of a white blossom (optional – SVG blossoms are used until it exists)
 };
 // where the droplet lands, as a fraction of the viewport (x from left, y from top).
 // For /hero/face.jpg this is recomputed on every resize from the cheekbone's position inside the photo (see placeFace).

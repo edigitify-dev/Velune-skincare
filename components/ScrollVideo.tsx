@@ -7,6 +7,10 @@ import {
   prefersReducedMotion,
 } from "@/lib/gsap";
 
+// ⚠️ Must match the number of files in each folder
+const N_DESKTOP = 150;
+const N_MOBILE = 75;
+
 const CAPTIONS = [
   {
     text: "Nature, thoughtfully formulated.",
@@ -33,7 +37,7 @@ export default function ScrollVideo() {
 
     const mobile = isMobile();
     const reduced = prefersReducedMotion();
-    const N = mobile ? 60 : 120;
+    const N = mobile ? N_MOBILE : N_DESKTOP;
     const dir = mobile ? "/sequence-m" : "/sequence";
     const url = (i: number) =>
       `${dir}/f_${String(i + 1).padStart(3, "0")}.webp`;
@@ -89,10 +93,11 @@ export default function ScrollVideo() {
       for (let i = 8; i < N; i += 8) order.push(i);
       for (let i = 0; i < N; i++) if (!order.includes(i)) order.push(i);
       if (reduced) order.unshift(Math.round(N * 0.7));
+      const MAX_INFLIGHT = mobile ? 4 : 6;
       let k = 0,
         inflight = 0;
       const pump = () => {
-        while (!dead && inflight < 4 && k < order.length) {
+        while (!dead && inflight < MAX_INFLIGHT && k < order.length) {
           const idx = order[k++];
           inflight++;
           const im = new Image();

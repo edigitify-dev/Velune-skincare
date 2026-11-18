@@ -4,6 +4,19 @@ import { gsap, prefersReducedMotion } from "@/lib/gsap";
 import { getLenis } from "@/lib/scroll";
 
 const FADE_LEAD = 3;
+const FALLBACK_MS = 3500;
+
+// Skip the intro entirely on Save-Data or very slow connections.
+function shouldSkipIntro() {
+  try {
+    const c = (navigator as any).connection;
+    if (!c) return false;
+    if (c.saveData) return true;
+    return c.effectiveType === "slow-2g" || c.effectiveType === "2g";
+  } catch {
+    return false;
+  }
+}
 
 export default function Loader() {
   const root = useRef<HTMLDivElement>(null);
@@ -12,7 +25,7 @@ export default function Loader() {
   const [gone, setGone] = useState(false);
 
   useEffect(() => {
-    if (prefersReducedMotion()) {
+    if (prefersReducedMotion() || shouldSkipIntro()) {
       setGone(true);
       return;
     }
@@ -24,7 +37,6 @@ export default function Loader() {
 
     document.documentElement.style.overflow = "hidden";
     getLenis()?.stop();
-    gsap.set("#top", { filter: "blur(26px)" });
 
     let started = false,
       revealed = false;
@@ -39,14 +51,9 @@ export default function Loader() {
     const reveal = (duration = FADE_LEAD) => {
       if (revealed) return;
       revealed = true;
-      gsap.to("#top", {
-        filter: "blur(0px)",
-        duration,
-        ease: "power2.out",
-        clearProps: "filter",
-      });
+      // Cheap transform instead of an expensive full-screen blur filter.
       gsap.to(box, {
-        filter: "blur(30px)",
+        scale: 1.06,
         duration,
         ease: "power1.in",
       });
@@ -74,18 +81,18 @@ export default function Loader() {
     const onEnded = () => reveal(1);
     const onError = () => reveal(0.6);
 
-    vid.addEventListener("canplaythrough", start);
+    vid.addEventListener("canplay", start);
     vid.addEventListener("timeupdate", onTimeUpdate);
     vid.addEventListener("ended", onEnded);
     vid.addEventListener("error", onError);
-    if (vid.readyState >= 4) start();
+    if (vid.readyState >= 3) start();
 
     timer = setTimeout(() => {
       if (!started) {
         started = true;
         reveal(0.6);
       }
-    }, 6000);
+    }, FALLBACK_MS);
 
     skipRef.current = () => {
       vid.pause();
@@ -94,7 +101,7 @@ export default function Loader() {
 
     return () => {
       clearTimeout(timer);
-      vid.removeEventListener("canplaythrough", start);
+      vid.removeEventListener("canplay", start);
       vid.removeEventListener("timeupdate", onTimeUpdate);
       vid.removeEventListener("ended", onEnded);
       vid.removeEventListener("error", onError);
@@ -109,10 +116,11 @@ export default function Loader() {
       className="fixed inset-0 z-[300] overflow-hidden bg-white"
       aria-hidden="true"
     >
-      <div className="l-vid absolute inset-0 will-change-[filter]">
+      <div className="l-vid absolute inset-0 will-change-transform">
         <video
           ref={video}
           src="/loader/loader.mp4"
+          poster="/loader/poster.jpg"
           muted
           playsInline
           preload="auto"

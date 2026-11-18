@@ -329,7 +329,7 @@ function Membrane({
   state,
   cheek,
   mobile,
-  bottleSrc = "/hero/bottle.png",
+  bottleSrc = "/hero/bottle.webp",
 }: Omit<Props, "active">) {
   const size = useThree((s) => s.size);
   const cheekRef = useRef(cheek);
