@@ -27,7 +27,7 @@ const webglOK = () => {
 const ESP = [51, 36, 31],
   IVO = [245, 240, 233];
 
-/** Left-hand stage captions. `b` is set in italic on the second line. */
+/** Left-hand stage captions. `b` is set in italic on the second line (desktop) / same line (mobile). */
 const CAPS = [
   {
     k: "The Formula",
@@ -62,11 +62,13 @@ export default function MolecularExperience() {
   const darkRef = useRef<HTMLDivElement>(null);
   const tintRef = useRef<HTMLDivElement>(null);
   const shown = useRef(0); // last hovered ingredient, so the card keeps its content while it fades out
+  const lastRef = useRef({ x: 0, t: 0 });
+  const wheelAcc = useRef(0);
 
   const S = useMemo<ExpState>(
     () => ({
       p: 0,
-      emerge: 0,
+      emerge: 1, // ingredients are already visible when the section pins (no empty first screen)
       bonds: 0,
       dense: 0,
       gather: 0,
@@ -109,6 +111,15 @@ export default function MolecularExperience() {
   useEffect(() => {
     setMode(prefersReducedMotion() || !webglOK() ? "static" : "film");
     setLite(isMobile() || (navigator.hardwareConcurrency || 8) <= 4);
+
+    // Warm the 3D chunk so it's cached before the section gets near the viewport
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const idle: (f: () => void) => void =
+      w.requestIdleCallback || ((f: () => void) => setTimeout(f, 800));
+    idle(() => {
+      import("./molecule/MolecularScene");
+    });
   }, []);
 
   const go = useCallback(
@@ -130,7 +141,7 @@ export default function MolecularExperience() {
         if (e.isIntersecting) setNear(true);
         setVisible(e.isIntersecting);
       },
-      { rootMargin: "60% 0px" },
+      { rootMargin: "250% 0px" }, // start building the scene well before the pin
     );
     io.observe(el);
 
@@ -158,6 +169,7 @@ export default function MolecularExperience() {
     const ctx = gsap.context(() => {
       const mob = isMobile();
       gsap.set(".mol-cap", { autoAlpha: 0, y: 14 });
+      gsap.set(".mol-cap-1", { autoAlpha: 1, y: 0 }); // caption 1 is visible from the very start
       gsap.set(".mol-ui", { autoAlpha: 0, y: 24 });
       const tl = gsap.timeline({
         defaults: { ease: "none" },
@@ -190,14 +202,8 @@ export default function MolecularExperience() {
         },
       });
       const T = tl;
-      // 0–15  ingredients emerge
+      // 0–15  ingredients are already out; just dolly the camera, then fade caption 1 away
       T.to(S, { p: 1, duration: 1 }, 0)
-        .to(S, { emerge: 1, duration: 0.14, ease: "power2.out" }, 0.005)
-        .to(
-          ".mol-cap-1",
-          { autoAlpha: 1, y: 0, duration: 0.04, ease: "power2.out" },
-          0.03,
-        )
         .to(".mol-cap-1", { autoAlpha: 0, y: -10, duration: 0.03 }, 0.14)
         // 15–35  bonds form, web densifies
         .to(S, { bonds: 1, duration: 0.2, ease: "power1.inOut" }, 0.14)
@@ -283,7 +289,6 @@ export default function MolecularExperience() {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     lastRef.current = { x: e.clientX, t: performance.now() };
   };
-  const lastRef = useRef({ x: 0, t: 0 });
   const upUnit = () =>
     window.innerWidth < 768
       ? window.innerWidth * 0.5
@@ -310,7 +315,6 @@ export default function MolecularExperience() {
       Math.max(0, Math.round(car.pos + car.vel * 0.16)),
     );
   };
-  const wheelAcc = useRef(0);
   const wheel = (e: React.WheelEvent) => {
     if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.2) {
       wheelAcc.current += e.deltaX;
@@ -377,9 +381,9 @@ export default function MolecularExperience() {
         </div>
       )}
 
-      {/* stage captions */}
+      {/* stage captions: bottom-left on every screen size, so the ingredient scene keeps the open space */}
       <div
-        className="pointer-events-none absolute inset-y-0 left-[5vw] z-[6] grid max-w-[min(580px,88vw)] content-center"
+        className="pointer-events-none absolute bottom-[7vh] left-[6vw] z-[6] grid max-w-[min(580px,80vw)] items-end md:bottom-[8vh] md:left-[5vw] md:max-w-[680px]"
         style={{ color: "var(--mol-ink)" }}
       >
         {CAPS.map((c, i) => (
@@ -387,27 +391,25 @@ export default function MolecularExperience() {
             key={c.k}
             className={`mol-cap mol-cap-${i + 1} opacity-0 [grid-area:1/1]`}
           >
-            <div className="flex items-center gap-4 text-[12px] font-medium uppercase tracking-[0.22em] opacity-80">
+            <div className="flex items-center gap-4 text-[10px] font-medium uppercase tracking-[0.2em] opacity-80 md:text-[12px] md:tracking-[0.22em]">
               <span>
                 0{i + 1} / {c.k}
               </span>
-              <span className="h-px w-14 bg-current opacity-50" />
+              <span className="hidden h-px w-14 bg-current opacity-50 md:block" />
             </div>
-            <h2 className="font-display mt-7 text-[clamp(52px,6.6vw,112px)] leading-[0.94] tracking-[-0.015em]">
-              {c.a}
-              <br />
-              <em className="italic">{c.b}</em>
+            <h2 className="font-display mt-2 text-[clamp(34px,9.5vw,48px)] leading-[0.98] tracking-[-0.015em] md:mt-4 md:text-[clamp(48px,4.4vw,80px)] md:leading-[1]">
+              {c.a} <em className="italic">{c.b}</em>
             </h2>
-            <p className="mt-7 max-w-[360px] text-[clamp(15px,1.25vw,19px)] leading-[1.55] opacity-75">
+            <p className="mt-2 max-w-[240px] text-[13px] leading-[1.45] opacity-75 md:mt-4 md:max-w-[420px] md:text-[clamp(15px,1.15vw,18px)] md:leading-[1.55]">
               {c.s}
             </p>
           </div>
         ))}
       </div>
 
-      {/* scroll hint (shown with the first caption) */}
+      {/* scroll hint (desktop only, bottom-right so it never collides with the caption) */}
       <div
-        className="mol-cap mol-cap-1 pointer-events-none absolute bottom-[9vh] left-[5vw] z-[6] flex items-center gap-4 text-[11px] font-medium uppercase tracking-[0.2em] opacity-0"
+        className="mol-cap mol-cap-1 pointer-events-none absolute bottom-[8vh] right-[5vw] z-[6] hidden items-center gap-4 text-[11px] font-medium uppercase tracking-[0.2em] opacity-0 md:flex"
         style={{ color: "var(--mol-ink)" }}
       >
         <span className="grid h-10 w-10 place-items-center rounded-full border border-current opacity-70">
@@ -533,9 +535,6 @@ export default function MolecularExperience() {
           </div>
         </div>
       </div>
-      <p className="mol-ui pointer-events-none absolute bottom-2 left-[5vw] z-[7] text-[10px] text-muted/70">
-        Ingredient names are placeholders. Prices to be added when verified.
-      </p>
       <style>{`@keyframes molIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}`}</style>
     </section>
   );

@@ -384,13 +384,13 @@ export default function NetworkLayer({
         ref={bondMesh}
         args={[bondGeo, bondMat, nE]}
         frustumCulled={false}
-        renderOrder={3}
+        renderOrder={1.5} // drawn before the hexagons, so the tiles always sit on top of the bond lines
       />
       <instancedMesh
         ref={nodeMesh}
         args={[nodeGeo, nodeMat, Math.max(1, N - H)]}
         frustumCulled={false}
-        renderOrder={4}
+        renderOrder={1.6} // junction beads go with the bonds, under the hexagons
       />
       <instancedMesh
         ref={hexMesh}

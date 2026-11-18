@@ -1,15 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import {
-  gsap,
-  ScrollTrigger,
-  isMobile,
-  prefersReducedMotion,
-} from "@/lib/gsap";
+import { gsap, ScrollTrigger, prefersReducedMotion } from "@/lib/gsap";
 
-// ⚠️ Must match the number of files in each folder
 const N_DESKTOP = 150;
-const N_MOBILE = 75;
 
 const CAPTIONS = [
   {
@@ -23,7 +16,79 @@ const CAPTIONS = [
   { text: "Return to your skin.", from: 0.78, to: 1.01, tone: "light" },
 ];
 
+/* ───────────── Wrapper: picks desktop or mobile ───────────── */
 export default function ScrollVideo() {
+  // null until mounted → avoids SSR/hydration mismatch
+  const [mobile, setMobile] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => setMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  if (mobile === null)
+    return <section id="film" className="h-screen w-full bg-ivory" />;
+
+  return mobile ? <MobileVideo /> : <DesktopSequence />;
+}
+
+/* ───────────── Mobile: simple rounded video ───────────── */
+function MobileVideo() {
+  const video = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const v = video.current;
+    if (!v) return;
+    if (prefersReducedMotion()) return; // poster + controls only
+
+    // Play only while visible (saves battery/data)
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) v.play().catch(() => {});
+        else v.pause();
+      },
+      { threshold: 0.35 },
+    );
+    io.observe(v);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <section
+      id="film"
+      className="relative flex w-full flex-col items-center bg-ivory px-5 py-16"
+    >
+      <p className="font-display mb-8 max-w-[85vw] text-center text-[clamp(28px,8vw,40px)] leading-[1.05] text-espresso">
+        Nature, thoughtfully formulated.
+      </p>
+
+      <div className="relative w-full max-w-[460px] overflow-hidden rounded-[28px] bg-charcoal/5 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.35)] ring-1 ring-black/5">
+        <video
+          ref={video}
+          src="/video.mp4"
+          poster="/poster.jpg"
+          className="block aspect-[4/5] w-full object-cover"
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          controls={prefersReducedMotion()}
+          aria-label="VELUNE serum, from bottle to skin"
+        />
+      </div>
+
+      <p className="font-display mt-8 text-center text-[22px] text-espresso/80">
+        Return to your skin.
+      </p>
+    </section>
+  );
+}
+
+/* ───────────── Desktop: scroll-driven frames ───────────── */
+function DesktopSequence() {
   const section = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [active, setActive] = useState(-1);
@@ -35,12 +100,10 @@ export default function ScrollVideo() {
     const ctx = cv.getContext("2d", { alpha: false });
     if (!ctx) return;
 
-    const mobile = isMobile();
     const reduced = prefersReducedMotion();
-    const N = mobile ? N_MOBILE : N_DESKTOP;
-    const dir = mobile ? "/sequence-m" : "/sequence";
+    const N = N_DESKTOP;
     const url = (i: number) =>
-      `${dir}/f_${String(i + 1).padStart(3, "0")}.webp`;
+      `/sequence/f_${String(i + 1).padStart(3, "0")}.webp`;
     const imgs: (HTMLImageElement | null)[] = Array(N).fill(null);
 
     let target = 0,
@@ -75,8 +138,7 @@ export default function ScrollVideo() {
     const resize = () => {
       const w = cv.clientWidth,
         h = cv.clientHeight;
-      if (w === lastW && (mobile ? Math.abs(h - lastH) < 150 : h === lastH))
-        return;
+      if (w === lastW && h === lastH) return;
       lastW = w;
       lastH = h;
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -93,7 +155,7 @@ export default function ScrollVideo() {
       for (let i = 8; i < N; i += 8) order.push(i);
       for (let i = 0; i < N; i++) if (!order.includes(i)) order.push(i);
       if (reduced) order.unshift(Math.round(N * 0.7));
-      const MAX_INFLIGHT = mobile ? 4 : 6;
+      const MAX_INFLIGHT = 6;
       let k = 0,
         inflight = 0;
       const pump = () => {
@@ -102,7 +164,6 @@ export default function ScrollVideo() {
           inflight++;
           const im = new Image();
           im.src = url(idx);
-          // decode off the main thread BEFORE we ever draw it
           im.decode()
             .then(() => {
               if (!dead) {
@@ -153,7 +214,6 @@ export default function ScrollVideo() {
       },
     });
 
-    // Lenis already smooths the scroll, so just draw the current frame each tick
     gsap.ticker.add(draw);
 
     return () => {

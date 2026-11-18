@@ -389,12 +389,12 @@ export default function Hero() {
       }
       if (reduced) {
         // no scroll film: keep the hero as a still frame
-        gsap.set(".h-face, .h-final, .h-skin", { autoAlpha: 0 });
+        gsap.set(".h-face, .h-final, .h-skin, .h-scrim", { autoAlpha: 0 });
         return;
       }
 
       gsap.set(".h-face", { yPercent: 100 });
-      gsap.set(".h-final", { autoAlpha: 0 });
+      gsap.set(".h-final, .h-scrim", { autoAlpha: 0 });
       gsap.set(".h-line", { yPercent: 112 });
       gsap.set(".h-sub, .h-cta", { autoAlpha: 0, y: 18 });
       gsap.set(".h-glow", { autoAlpha: 0, scale: 0.15 });
@@ -417,7 +417,7 @@ export default function Hero() {
       // and nothing advances on its own. (ph = overall progress, used as the phase for ripples / drift.)
       tl.to(S, { ph: 1, duration: D }, 0)
 
-        // 0–20 ▸ product rests in a stable sphere; hero UI starts to leave right at the end of this beat
+        // 0–6 ▸ the hero UI leaves almost immediately: gone after roughly a third of a screen of scrolling
         .to(".h-scroll", { autoAlpha: 0, duration: 0.5 }, 0)
         .to(
           ".h-copy",
@@ -425,15 +425,15 @@ export default function Hero() {
             autoAlpha: 0,
             y: -50,
             filter: "blur(8px)",
-            duration: at(0.12),
-            ease: "power2.inOut",
+            duration: at(0.06),
+            ease: "power2.out",
           },
-          at(0.14),
+          0,
         )
         .to(
           ".h-feat",
-          { autoAlpha: 0, x: 40, duration: at(0.1), ease: "power2.inOut" },
-          at(0.16),
+          { autoAlpha: 0, x: 40, duration: at(0.05), ease: "power2.out" },
+          at(0.01),
         )
 
         // 20–35 ▸ a hairline crack appears where the ball is hit and spiders out across the glass (bottle still inside)
@@ -484,6 +484,13 @@ export default function Hero() {
           ".h-glow",
           { autoAlpha: 0.5, scale: 1, duration: at(0.06), ease: "power2.out" },
           at(0.915),
+        )
+
+        // mobile readability scrim: eases in slowly, starting before the headline appears
+        .to(
+          ".h-scrim",
+          { autoAlpha: 1, duration: at(0.09), ease: "sine.inOut" },
+          at(0.88),
         )
 
         // final message: line by line, then the support line, then the CTA
@@ -752,9 +759,21 @@ export default function Hero() {
         />
       </div>
 
+      {/* mobile only: soft warm scrim behind the closing text; fades in on its own timeline tween */}
+      <div
+        aria-hidden
+        className="h-scrim pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-[55vh] md:hidden"
+        style={{
+          opacity: 0,
+          visibility: "hidden",
+          background:
+            "linear-gradient(to top, rgba(246,228,212,.7) 0%, rgba(246,228,212,.62) 22%, rgba(246,228,212,.45) 42%, rgba(246,228,212,.24) 62%, rgba(246,228,212,.09) 80%, rgba(246,228,212,0) 100%)",
+        }}
+      />
+
       {/* ── 6. closing message ── */}
       <div className="h-final pointer-events-none absolute right-[6vw] top-1/2 z-[6] -translate-y-1/2 text-right max-md:left-[6vw] max-md:top-auto max-md:bottom-[12vh] max-md:translate-y-0">
-        <h2 className="font-display text-[clamp(38px,5vw,86px)] font-normal leading-[1.04] tracking-[-0.01em]">
+        <h2 className="font-display text-[clamp(38px,5vw,86px)] font-normal leading-[1.04] tracking-[-0.01em] max-md:text-[clamp(44px,14vw,58px)]">
           <span className="block overflow-hidden pb-[.1em]">
             <span className="h-line block">Nature’s Ritual</span>
           </span>
@@ -762,7 +781,7 @@ export default function Hero() {
             <span className="h-line block">for Lasting Glow.</span>
           </span>
         </h2>
-        <p className="h-sub ml-auto mt-5 max-w-[360px] text-[14px] leading-[1.75] text-[#5B4333] max-md:ml-0 max-md:text-left">
+        <p className="h-sub ml-auto mt-5 max-w-[360px] text-[14px] leading-[1.75] text-[#5B4333] max-md:ml-0 max-md:text-[15px] max-md:font-medium max-md:text-[#2A1A10] max-md:[text-shadow:0_0_10px_rgba(246,228,212,.9),0_0_3px_rgba(246,228,212,.9)] max-md:text-left">
           Thoughtfully crafted care for skin that deserves a little more
           attention.
         </p>
