@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer } from "@react-three/postprocessing";
 import * as THREE from "three";
@@ -9,6 +9,8 @@ import NetworkLayer from "./NetworkLayer";
 import GlassShards from "./GlassShards";
 import Particles from "./Particles";
 import Carousel from "./Carousel";
+import PerfGuard from "../PerfGuard";
+import { dprFor, useTier, type Tier } from "@/lib/quality";
 
 export type Shared = { uTime: { value: number }; uDark: { value: number } };
 
@@ -64,9 +66,10 @@ function World({
   car,
   mouse,
   lite,
+  tier,
   onHover,
   onActive,
-}: Omit<Props, "active">) {
+}: Omit<Props, "active"> & { tier: Tier }) {
   const aspect = useThree((s) => s.size.width / s.size.height);
   const bucket = aspect < 0.9 ? 0 : aspect < 1.4 ? 1 : 2;
   const net = useMemo(() => buildNetwork(lite, aspect), [lite, bucket]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -78,6 +81,29 @@ function World({
   const hoverRef = useRef(-1);
   const bloom = useRef<any>(null);
 
+  // Warm-up while the canvas is still idle (the render loop is off until the section is near): compile every
+  // shader without blocking, then draw ONE frame so textures, buffers and the bloom passes are on the GPU.
+  // Without this all of that happens on the first visible frame, which is what made the tiles pop in late.
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const get = useThree((s) => s.get);
+  useEffect(() => {
+    let dead = false;
+    const t = setTimeout(async () => {
+      try {
+        await gl.compileAsync(scene, camera);
+      } catch {}
+      if (dead) return;
+      const st = get();
+      if (st.frameloop === "never") st.advance(performance.now() / 1000);
+    }, 300);
+    return () => {
+      dead = true;
+      clearTimeout(t);
+    };
+  }, [gl, scene, camera, get]);
+
   useFrame(() => {
     if (group.current) group.current.rotation.y = S.rot;
     if (bloom.current) bloom.current.intensity = 0.32 + 0.3 * S.dark;
@@ -85,6 +111,7 @@ function World({
 
   return (
     <>
+      <PerfGuard />
       <Rig S={S} mouse={mouse} shared={shared} />
       <group ref={group}>
         <Particles S={S} shared={shared} lite={lite} />
@@ -101,7 +128,7 @@ function World({
       <Suspense fallback={null}>
         <Carousel S={S} car={car} mouse={mouse} onActive={onActive} />
       </Suspense>
-      {!lite && (
+      {!lite && tier === "high" && (
         <EffectComposer multisampling={4}>
           <Bloom
             ref={bloom}
@@ -126,13 +153,19 @@ export default function MolecularScene({
   onHover,
   onActive,
 }: Props) {
+  // live tier: the FPS guard can lower it while the page is running
+  const tier = useTier() ?? (lite ? "medium" : "high");
   return (
     <Canvas
       className="!absolute inset-0"
       flat
-      dpr={lite ? 1 : [1, 1.6]}
+      dpr={lite ? 1 : dprFor(tier, [1, 1.6])}
       camera={{ fov: 40, near: 0.1, far: 80, position: [0, 0, 10.5] }}
-      gl={{ antialias: lite, alpha: true, powerPreference: "high-performance" }}
+      gl={{
+        antialias: lite,
+        alpha: true,
+        powerPreference: lite ? "default" : "high-performance",
+      }}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       frameloop={active ? "always" : "never"}
       aria-hidden
@@ -142,6 +175,7 @@ export default function MolecularScene({
         car={car}
         mouse={mouse}
         lite={lite}
+        tier={tier}
         onHover={onHover}
         onActive={onActive}
       />

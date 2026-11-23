@@ -1,7 +1,9 @@
-'use client';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useMemo } from 'react';
-import * as THREE from 'three';
+"use client";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
+import * as THREE from "three";
+import PerfGuard from "./PerfGuard";
+import { dprFor, useTier } from "@/lib/quality";
 
 export type RitualState = { p: number };
 
@@ -48,7 +50,10 @@ void main(){
 }`;
 
 function Plane({ state }: { state: RitualState }) {
-  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uAspect: { value: 1 }, uProg: { value: 0 } }), []);
+  const uniforms = useMemo(
+    () => ({ uTime: { value: 0 }, uAspect: { value: 1 }, uProg: { value: 0 } }),
+    [],
+  );
   useFrame((s) => {
     uniforms.uTime.value = s.clock.elapsedTime;
     uniforms.uAspect.value = s.size.width / s.size.height;
@@ -57,15 +62,42 @@ function Plane({ state }: { state: RitualState }) {
   return (
     <mesh frustumCulled={false}>
       <planeGeometry args={[2, 2]} />
-      <shaderMaterial vertexShader={vert} fragmentShader={frag} uniforms={uniforms} transparent depthTest={false} />
+      <shaderMaterial
+        vertexShader={vert}
+        fragmentShader={frag}
+        uniforms={uniforms}
+        transparent
+        depthTest={false}
+      />
     </mesh>
   );
 }
 
-export default function RitualCanvas({ state, active, mobile }: { state: RitualState; active: boolean; mobile: boolean }) {
+export default function RitualCanvas({
+  state,
+  active,
+  mobile,
+}: {
+  state: RitualState;
+  active: boolean;
+  mobile: boolean;
+}) {
+  const tier = useTier() ?? "medium";
+  // flat full-screen shader: no antialiasing needed, and a lower resolution is invisible on soft cream gradients
+  const dpr = mobile
+    ? tier === "low"
+      ? 0.75
+      : 1
+    : dprFor(tier, [1, 1.5], 0.75);
   return (
-    <Canvas className="!absolute inset-0" dpr={mobile ? 1 : [1, 1.5]} gl={{ alpha: true, antialias: true }}
-            frameloop={active ? 'always' : 'never'} aria-hidden>
+    <Canvas
+      className="!absolute inset-0"
+      dpr={dpr}
+      gl={{ alpha: true, antialias: false }}
+      frameloop={active ? "always" : "never"}
+      aria-hidden
+    >
+      <PerfGuard />
       <Plane state={state} />
     </Canvas>
   );

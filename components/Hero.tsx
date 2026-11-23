@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useId, useRef, useState } from "react";
 import { gsap, isMobile, prefersReducedMotion } from "@/lib/gsap";
 import { scrollToHash } from "@/lib/scroll";
+import { getTier } from "@/lib/quality";
 import type { LiquidState } from "./HeroLiquid";
 
 const HeroLiquid = dynamic(() => import("./HeroLiquid"), { ssr: false });
@@ -284,6 +285,7 @@ export default function Hero() {
     ph: 0,
     def: 0,
     break: 0,
+    shake: 0,
     gone: 0,
     spread: 0,
     conv: 0,
@@ -345,7 +347,7 @@ export default function Hero() {
   }, [hasFace, cheek]);
 
   useEffect(() => {
-    setMobile(isMobile());
+    setMobile(isMobile() || getTier() !== "high");
     const io = new IntersectionObserver(([e]) => setActive(e.isIntersecting), {
       rootMargin: "10% 0px",
     });
@@ -435,6 +437,10 @@ export default function Hero() {
           { autoAlpha: 0, x: 40, duration: at(0.05), ease: "power2.out" },
           at(0.01),
         )
+
+        // 2–35 ▸ the ball starts to tremble as soon as the copy begins to leave (no dead scroll) and shakes
+        //        harder and harder until it shatters (envelope only; HeroLiquid adds the high-frequency jitter)
+        .to(S, { shake: 1, duration: at(0.33), ease: "power1.in" }, at(0.02))
 
         // 20–35 ▸ a hairline crack appears where the ball is hit and spiders out across the glass (bottle still inside)
         .to(S, { def: 1, duration: at(0.15), ease: "power1.in" }, at(0.2))
@@ -577,16 +583,6 @@ export default function Hero() {
           }}
         />
         <div className="absolute inset-x-0 top-[40%] h-px bg-gradient-to-r from-transparent via-white/60 to-transparent" />
-        {[0, 1.8, 3.6].map((d) => (
-          <span
-            key={d}
-            className="absolute bottom-[10%] left-1/2 h-[9vmin] w-[48vmin] rounded-[50%] border border-white/70 lg:left-[63%]"
-            style={{
-              animation: `hRipple 5.4s ${d}s cubic-bezier(.2,.6,.3,1) infinite`,
-              opacity: 0,
-            }}
-          />
-        ))}
       </div>
 
       {/* ── 2. blossoms + petals ── */}
@@ -806,7 +802,6 @@ export default function Hero() {
       </div>
 
       <style>{`
-        @keyframes hRipple { 0%{ transform:translateX(-50%) scale(.45); opacity:0 } 15%{ opacity:.75 } 100%{ transform:translateX(-50%) scale(1.5); opacity:0 } }
         @keyframes hDrift { 0%,100%{ transform: translate3d(0,0,0) rotate(var(--r)) } 50%{ transform: translate3d(14px,-18px,0) rotate(calc(var(--r) + 14deg)) } }
         .hPetal{ animation: hDrift 9s ease-in-out infinite; will-change: transform }
       `}</style>

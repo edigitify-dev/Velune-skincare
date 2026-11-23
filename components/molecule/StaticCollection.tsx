@@ -2,7 +2,7 @@
 import { COLLECTION, INGREDIENTS } from "@/lib/collection";
 import { scrollToHash } from "@/lib/scroll";
 
-/** Accessible, non-animated version (reduced motion or no WebGL). Same content, no 3D. */
+/** Accessible, non-animated version (reduced motion, low-end device or no WebGL). Same content, no 3D. */
 export default function StaticCollection() {
   return (
     <section
@@ -22,14 +22,23 @@ export default function StaticCollection() {
           </li>
         ))}
       </ul>
-      <ul className="mt-14 grid grid-cols-2 gap-x-6 gap-y-12 md:grid-cols-4">
+      <p className="mt-3 text-[11px] text-muted/80">
+        Ingredient names are placeholders.
+      </p>
+
+      {/* flex-wrap + justify-center: a short last row (7 products = 4 + 3) is centred instead of leaving a gap on the right */}
+      <ul className="mt-14 flex flex-wrap justify-center gap-x-6 gap-y-12">
         {COLLECTION.map((c) => (
-          <li key={c.id}>
+          <li
+            key={c.id}
+            className="w-[calc(50%_-_12px)] md:w-[calc(25%_-_18px)]"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={c.image}
               alt={c.name}
               loading="lazy"
+              decoding="async"
               className="mx-auto h-[38vh] w-auto object-contain"
             />
             <div className="mt-4 text-[11px] uppercase tracking-[0.14em] text-muted">
@@ -42,6 +51,7 @@ export default function StaticCollection() {
           </li>
         ))}
       </ul>
+
       <button className="btn mt-14" onClick={() => scrollToHash("#shop")}>
         Discover the collection
       </button>

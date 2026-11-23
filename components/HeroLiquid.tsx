@@ -1,7 +1,10 @@
 "use client";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import PerfGuard from "./PerfGuard";
+import { aniso, dprFor, useTier } from "@/lib/quality";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { COLLECTION } from "@/lib/collection";
 import {
   IMPACT,
   buildShardGeometry,
@@ -11,24 +14,11 @@ import {
   shardVert,
 } from "./heroShatter";
 
-/**
- * Scroll-driven state (all 0..1). Hero.tsx tweens these with GSAP, the shaders just read them.
- *  ph      – overall scroll progress (phase for the little tremors / drift, so nothing animates on its own)
- *  def     – CRACKING: fracture lines run out from the impact point across the glass ball (0.2→1 of this value)
- *  break   – SHATTER: the ball bursts, glass hands over to ~100 flying shards (front-loaded burst, then hang + gravity)
- *  gone    – the shards melt away
- *  spread  – (unused, kept so existing state objects stay valid)
- *  conv    – the serum drop that condensed from the bottle travels to the middle of the screen
- *  lift    – the drop floats up to its hover point above the face
- *  fall    – the drop falls toward the cheek
- *  splat   – (unused)
- *  fade    – the film on the skin is absorbed (1 = gone)
- *  bottle  – dissolve amount of the product bottle (1 = visible, 0 = dissolved into the drop)
- */
 export type LiquidState = {
   ph: number;
   def: number;
   break: number;
+  shake: number; // 0→1 ramp: the whole ball trembles harder and harder until it bursts
   gone: number;
   spread: number;
   conv: number;
@@ -39,6 +29,9 @@ export type LiquidState = {
   bottle: number;
 };
 export type Cheek = { x: number; y: number }; // landing spot, as fractions of the viewport (0..1). Mutated in place on resize.
+
+// the rest of the range shown inside the glass after the serum (ids from lib/collection)
+const ROTATION = ["cleanse", "oil", "mist", "veil"];
 
 const N = 4; // uniform array size: 1 sphere + 2 cursor blobs + 1 primary serum drop
 
@@ -54,7 +47,7 @@ uniform int uN;
 uniform vec2 uRes, uTip, uBPos;
 uniform vec4 uB[${N}];   // xy = centre, z = radius, w = vertical stretch
 uniform vec4 uC[${N}];   // x = rotation, y = depth-of-field blur, z = seed (-1..1), w = teardrop taper
-uniform sampler2D uBottle;
+uniform sampler2D uBottle, uBottle2; uniform float uBMix;
 
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -165,7 +158,10 @@ void main(){
   q=mat2(cr,-sr,sr,cr)*q;
   vec2 bu=vec2(q.x/(uBH*uBAsp)+.5, q.y/uBH+.5);
   float inside=step(0.,bu.x)*step(bu.x,1.)*step(0.,bu.y)*step(bu.y,1.);
-  vec4 bt=texture2D(uBottle,clamp(bu,0.,1.));
+  // two product pictures cross-fade inside the glass (alpha-weighted so the edges don't halo)
+  vec4 bt1=texture2D(uBottle,clamp(bu,0.,1.)), bt2=texture2D(uBottle2,clamp(bu,0.,1.));
+  float bta=mix(bt1.a,bt2.a,uBMix);
+  vec4 bt=vec4((bt1.rgb*bt1.a*(1.-uBMix)+bt2.rgb*bt2.a*uBMix)/max(bta,.001), bta);
   float bm=mix(smoothstep(0.,-.035,d0),1.,uBFree);   // un-clipped once the ball is broken
   float n1=noise(bu*16.+3.)*.65+noise(bu*44.+9.)*.35;
   float vis=smoothstep(n1-.1,n1,uBA*1.25-.15);
@@ -361,6 +357,8 @@ function Membrane({
       uTip: { value: new THREE.Vector2() },
       uVel: { value: 0 },
       uBottle: { value: blank as THREE.Texture },
+      uBottle2: { value: blank as THREE.Texture },
+      uBMix: { value: 0 },
       uBPos: { value: new THREE.Vector2() },
       uBH: { value: 0.5 },
       uBAsp: { value: 0.433 },
@@ -407,16 +405,52 @@ function Membrane({
   const shardMesh = useRef<THREE.Mesh>(null);
   const flashMesh = useRef<THREE.Mesh>(null);
 
+  // product rotation inside the glass: slot 0 = hero serum bottle, then the rest of the range
+  const texs = useRef<(THREE.Texture | undefined)[]>([]);
+  const cyc = useRef({ cur: 0, nxt: 0, f: 0, fading: false, timer: 0 });
+
   // bottle texture: procedural first, real PNG if present
   useEffect(() => {
     let dead = false;
     const textures: THREE.Texture[] = [];
+    const slots = texs.current;
+    slots.length = 0;
     const apply = (tex: THREE.Texture, aspect: number) => {
-      tex.anisotropy = 8;
+      tex.anisotropy = aniso();
       tex.needsUpdate = true;
       textures.push(tex);
-      uniforms.uBottle.value = tex;
+      slots[0] = tex; // slot 0 = the hero serum bottle; the frame loop binds whichever slot is showing
       uniforms.uBAsp.value = aspect;
+    };
+    // the rest of the range, loaded after the hero bottle: each product cut-out is re-drawn onto a 3:4 canvas
+    // scaled so it fills the glass like the serum does (the studio shots fill their frame a little more)
+    const loadRange = () => {
+      ROTATION.forEach((id, k) => {
+        const item = COLLECTION.find((c) => c.id === id);
+        if (!item) return;
+        const im = new Image();
+        im.onload = () => {
+          if (dead) return;
+          const W = im.naturalWidth,
+            H = im.naturalHeight,
+            f = 0.94;
+          const cv = document.createElement("canvas");
+          cv.width = W;
+          cv.height = H;
+          cv.getContext("2d")!.drawImage(
+            im,
+            (W * (1 - f)) / 2,
+            (H * (1 - f)) / 2,
+            W * f,
+            H * f,
+          );
+          const tex = new THREE.CanvasTexture(cv);
+          tex.anisotropy = aniso();
+          textures.push(tex);
+          slots[k + 1] = tex;
+        };
+        im.src = item.image;
+      });
     };
     (async () => {
       try {
@@ -429,7 +463,9 @@ function Membrane({
       img.onload = () => {
         if (!dead)
           apply(new THREE.Texture(img), img.naturalWidth / img.naturalHeight);
+        loadRange();
       };
+      img.onerror = loadRange;
       img.src = bottleSrc;
     })();
     return () => {
@@ -510,8 +546,24 @@ function Membrane({
     /* ── 1. the ball (glass body of the liquid shader). Radius must equal the shards' radius. ── */
     const bob = 1 - burst;
     const mr0 = R * (1 + 0.008 * Math.sin(t * 1.3) * bob);
-    const sx = L.cx;
-    const sy = L.cy + Math.sin(t * 0.9) * 0.006 * bob;
+    // pre-shatter tremor: starts right after the hero copy is gone and builds until the glass bursts.
+    // Driven by the scroll-scrubbed `shake` envelope (so it rewinds), with time-based jitter so it keeps
+    // vibrating even if the user pauses mid-scroll.
+    const sh = clamp01(st.shake) * (1 - burst);
+    // a clearly visible tremor from the very first bit of scroll, then it ramps up to violent
+    const amp = 0.18 * Math.min(1, sh * 8) + 0.82 * sh * sh;
+    const jx =
+      Math.sin(t * 91) +
+      0.6 * Math.sin(t * 137 + 1.3) +
+      0.4 * Math.sin(t * 211 + 2.1);
+    const jy =
+      Math.sin(t * 83 + 0.7) +
+      0.6 * Math.sin(t * 149 + 2.6) +
+      0.4 * Math.sin(t * 193 + 0.4);
+    const shX = jx * 0.012 * R * amp * 2.2;
+    const shY = jy * 0.012 * R * amp * 2.2;
+    const sx = L.cx + shX;
+    const sy = L.cy + Math.sin(t * 0.9) * 0.006 * bob * (1 - sh) + shY;
     // once the shards have taken over, drop the ball from the metaball field entirely (frees the serum drop)
     B[0].set(sx, sy, br > 0.03 ? 0 : mr0, 1);
     C[0].set(0, 0, 0, 0);
@@ -617,8 +669,44 @@ function Membrane({
       sx - (k.x - L.cx) * 0.02,
       sy - (k.y - L.cy) * 0.02 - L.R * 0.02 + Math.sin(t * 0.9) * 0.004,
     );
-    uniforms.uBRot.value = Math.max(-0.12, Math.min(0.12, (k.x - L.cx) * 0.08));
+    uniforms.uBRot.value =
+      Math.max(-0.12, Math.min(0.12, (k.x - L.cx) * 0.08)) +
+      Math.sin(t * 107 + 0.9) * 0.07 * amp; // the bottle rattles inside the glass
     uniforms.uBH.value = L.R * 1.58;
+    // cycle through the range while the ball is intact (a fade that has started always finishes; no new one
+    // starts once the ball begins to shake, so the bottle that shatters is steady)
+    {
+      const cy = cyc.current,
+        T = texs.current;
+      const loaded = (i: number) => !!T[i];
+      if (cy.fading) {
+        cy.f = Math.min(1, cy.f + dt / 1.0);
+        if (cy.f >= 1) {
+          cy.cur = cy.nxt;
+          cy.fading = false;
+          cy.f = 0;
+          cy.timer = 0;
+        }
+      } else if (st.shake < 0.01 && st.break <= 0) {
+        cy.timer += dt;
+        if (cy.timer > 3.2) {
+          const n = ROTATION.length + 1;
+          for (let o = 1; o < n; o++) {
+            const c = (cy.cur + o) % n;
+            if (loaded(c)) {
+              cy.nxt = c;
+              cy.fading = true;
+              cy.f = 0;
+              break;
+            }
+          }
+          cy.timer = 0;
+        }
+      }
+      uniforms.uBottle.value = T[cy.cur] ?? T[0] ?? uniforms.uBottle.value;
+      uniforms.uBottle2.value = cy.fading ? (T[cy.nxt] ?? blank) : blank;
+      uniforms.uBMix.value = cy.fading ? cy.f * cy.f * (3 - 2 * cy.f) : 0;
+    }
     uniforms.uBA.value = st.bottle;
     uniforms.uGlass.value = 1 - burst;
     uniforms.uBFree.value = burst;
@@ -712,19 +800,22 @@ export default function HeroLiquid({
   cheek,
   bottleSrc,
 }: Props) {
+  // live tier: the FPS guard can lower it while the page is running
+  const tier = useTier() ?? (mobile ? "medium" : "high");
   return (
     <Canvas
       className="!absolute inset-0"
-      dpr={mobile ? 1 : [1, 1.5]}
+      dpr={mobile ? 1 : dprFor(tier, [1, 1.5])}
       gl={{
         alpha: true,
         antialias: !mobile,
-        powerPreference: "high-performance",
+        powerPreference: mobile ? "default" : "high-performance",
       }}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       frameloop={active ? "always" : "never"}
       aria-hidden
     >
+      <PerfGuard />
       <Membrane
         state={state}
         cheek={cheek}

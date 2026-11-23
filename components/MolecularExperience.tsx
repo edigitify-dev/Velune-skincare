@@ -8,9 +8,11 @@ import {
   prefersReducedMotion,
 } from "@/lib/gsap";
 import { scrollToHash } from "@/lib/scroll";
+import { getTier } from "@/lib/quality";
 import { COLLECTION, INGREDIENTS } from "@/lib/collection";
 import type { CarouselState, ExpState, Mouse } from "./molecule/types";
 import StaticCollection from "./molecule/StaticCollection";
+import { preloadAtlas } from "./molecule/atlas";
 
 const MolecularScene = dynamic(() => import("./molecule/MolecularScene"), {
   ssr: false,
@@ -103,23 +105,43 @@ export default function MolecularExperience() {
 
   const [mode, setMode] = useState<"pending" | "film" | "static">("pending");
   const [near, setNear] = useState(false);
+  const [ready, setReady] = useState(false); // scene code + hexagon sheet are downloaded and prepared
   const [visible, setVisible] = useState(false);
   const [lite, setLite] = useState(false);
   const [hover, setHover] = useState(-1);
   const [active, setActive] = useState(1);
 
   useEffect(() => {
-    setMode(prefersReducedMotion() || !webglOK() ? "static" : "film");
-    setLite(isMobile() || (navigator.hardwareConcurrency || 8) <= 4);
+    const tier = getTier();
+    setMode(
+      prefersReducedMotion() || !webglOK() || tier === "low"
+        ? "static"
+        : "film",
+    );
+    setLite(tier !== "high");
 
     // Warm the 3D chunk so it's cached before the section gets near the viewport
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const idle: (f: () => void) => void =
       w.requestIdleCallback || ((f: () => void) => setTimeout(f, 800));
-    idle(() => {
-      import("./molecule/MolecularScene");
-    });
+    // …and prepare the hexagon picture sheet too (download + decode + paint). Only the real 3D film needs it.
+    // When both are done the scene is allowed to mount (see `ready` below).
+    if (prefersReducedMotion() || !webglOK() || tier === "low") {
+      idle(() => {
+        import("./molecule/MolecularScene");
+      });
+    } else {
+      const lt = tier !== "high";
+      const start = () => {
+        Promise.all([import("./molecule/MolecularScene"), preloadAtlas(lt)])
+          .catch(() => {})
+          .then(() => setReady(true));
+      };
+      if (w.requestIdleCallback)
+        w.requestIdleCallback(start, { timeout: 1200 });
+      else setTimeout(start, 400);
+    }
   }, []);
 
   const go = useCallback(
@@ -136,14 +158,22 @@ export default function MolecularExperience() {
   useEffect(() => {
     if (mode !== "film") return;
     const el = root.current!;
-    const io = new IntersectionObserver(
+    // `visible` (render loop on) keeps the old 2.5-screen lead; `near` (mount the canvas, compile shaders,
+    // upload textures) now fires while the user is still in the hero, so the scene is fully warmed up and
+    // already showing its tiles by the time this section arrives. Light-mode devices keep the short lead
+    // (and free the canvas again when scrolled away) to save memory.
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), {
+      rootMargin: "250% 0px",
+    });
+    io.observe(el);
+    const ioNear = new IntersectionObserver(
       ([e]) => {
         if (e.isIntersecting) setNear(true);
-        setVisible(e.isIntersecting);
+        else if (lite) setNear(false);
       },
-      { rootMargin: "250% 0px" }, // start building the scene well before the pin
+      { rootMargin: lite ? "250% 0px" : "1200% 0px" },
     );
-    io.observe(el);
+    ioNear.observe(el);
 
     const onMove = (e: PointerEvent) => {
       mouse.sx = (e.clientX / window.innerWidth) * 2 - 1;
@@ -272,12 +302,30 @@ export default function MolecularExperience() {
 
     return () => {
       io.disconnect();
+      ioNear.disconnect();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("resize", onResize);
       ctx.revert();
       ScrollTrigger.refresh();
     };
-  }, [mode, S, car, mouse]);
+  }, [mode, lite, S, car, mouse]);
+
+  // Static version has a different height than the pinned film: re-measure every trigger below it.
+  useEffect(() => {
+    if (mode !== "static") return;
+    const id = requestAnimationFrame(() => {
+      ScrollTrigger.sort((a: ScrollTrigger, b: ScrollTrigger) => {
+        const A = a.trigger as Element | undefined,
+          B = b.trigger as Element | undefined;
+        if (!A || !B || A === B) return 0;
+        return A.compareDocumentPosition(B) & Node.DOCUMENT_POSITION_FOLLOWING
+          ? -1
+          : 1;
+      });
+      ScrollTrigger.refresh();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [mode]);
 
   /* ───── carousel input: drag (mouse + touch), buttons, keys, horizontal trackpad ───── */
   const down = (e: React.PointerEvent) => {
@@ -367,7 +415,7 @@ export default function MolecularExperience() {
         style={{ backgroundColor: item.tint, opacity: 0 }}
       />
 
-      {mode === "film" && near && (
+      {mode === "film" && near && ready && (
         <div className="absolute inset-0">
           <MolecularScene
             S={S}

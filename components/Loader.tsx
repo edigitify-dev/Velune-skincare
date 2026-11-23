@@ -120,7 +120,7 @@ export default function Loader() {
         <video
           ref={video}
           src="/loader/loader.mp4"
-          poster="/loader/poster.jpg"
+          poster="/loader/poster.webp"
           muted
           playsInline
           preload="auto"

@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { CarouselState, ExpState, Mouse } from "./types";
 import { COLLECTION } from "@/lib/collection";
 import { ss } from "./network";
+import { aniso } from "@/lib/quality";
 
 const FLOOR = -1.5;
 
@@ -38,7 +39,7 @@ export default function Carousel({
   useEffect(() => {
     tex.forEach((t) => {
       t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 8;
+      t.anisotropy = aniso();
       t.needsUpdate = true;
     });
   }, [tex]);
