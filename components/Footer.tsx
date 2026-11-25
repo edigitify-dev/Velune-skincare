@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { scrollToHash } from '@/lib/scroll';
+import Link from 'next/link';
 
 export default function Footer() {
   const [email, setEmail] = useState('');
@@ -33,8 +33,8 @@ export default function Footer() {
         </form>
 
         <nav className="flex flex-col gap-3 text-[14px]" aria-label="Footer">
-          {[['Shop', '#shop'], ['Our Philosophy', '#film'], ['Formulation', '#formulation']].map(([l, h]) => (
-            <a key={h} href={h} onClick={(e) => { e.preventDefault(); scrollToHash(h); }} className="w-fit text-ivory/80 hover:text-clay">{l}</a>
+          {[['Shop', '/shop'], ['Rituals', '/rituals'], ['About', '/about']].map(([l, h]) => (
+            <Link key={h} href={h} className="w-fit text-ivory/80 hover:text-clay">{l}</Link>
           ))}
         </nav>
         <div className="flex flex-col gap-3 text-[14px] text-ivory/80">

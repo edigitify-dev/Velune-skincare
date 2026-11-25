@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCart } from "@/lib/cart";
-import { scrollToHash } from "@/lib/scroll";
 
 const LINKS = [
-  { label: "Home", href: "#top" },
-  { label: "Shop", href: "#shop" },
-  { label: "Rituals", href: "#film" },
-  { label: "About", href: "#formulation" },
+  { label: "Home", href: "/" },
+  { label: "Shop", href: "/shop" },
+  { label: "Rituals", href: "/rituals" },
+  { label: "About", href: "/about" },
 ];
 
 const stroke = {
@@ -22,23 +23,12 @@ export default function Nav() {
   const { count, setOpen } = useCart();
   const [solid, setSolid] = useState(false);
   const [menu, setMenu] = useState(false);
-  const [current, setCurrent] = useState("#top");
+  const pathname = usePathname();
+  const current = pathname;
 
   useEffect(() => {
     const onScroll = () => {
       setSolid(window.scrollY > 60);
-      // highlight the section currently under the header
-      let cur = "#top";
-      for (const l of LINKS) {
-        const el = document.querySelector(l.href) as HTMLElement | null;
-        if (
-          el &&
-          el.getBoundingClientRect().top <= window.innerHeight * 0.5 &&
-          l.href !== "#top"
-        )
-          cur = l.href;
-      }
-      setCurrent(window.scrollY < window.innerHeight * 0.5 ? "#top" : cur);
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -51,10 +41,7 @@ export default function Nav() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const go = (href: string) => {
-    setMenu(false);
-    setTimeout(() => scrollToHash(href), 50);
-  };
+  const go = () => setMenu(false);
 
   const ink = menu ? "text-ivory" : "text-[#3B2A1D]";
 
@@ -65,12 +52,9 @@ export default function Nav() {
           solid ? "bg-ivory/60 backdrop-blur-md" : ""
         } ${menu ? "!bg-transparent !backdrop-blur-0" : ""}`}
       >
-        <a
-          href="#top"
-          onClick={(e) => {
-            e.preventDefault();
-            go("#top");
-          }}
+        <Link
+          href="/"
+          onClick={go}
           aria-label="VELUNE home"
           className={`flex flex-col items-start leading-none transition-colors ${ink}`}
         >
@@ -80,20 +64,17 @@ export default function Nav() {
           <span className="mt-[5px] pl-[2px] text-[8px] tracking-[0.42em] opacity-80">
             SKIN RITUALS
           </span>
-        </a>
+        </Link>
 
         <nav
           className="hidden items-center gap-12 md:flex"
           aria-label="Primary"
         >
           {LINKS.map((l) => (
-            <a
+            <Link
               key={l.href}
               href={l.href}
-              onClick={(e) => {
-                e.preventDefault();
-                go(l.href);
-              }}
+              onClick={go}
               aria-current={current === l.href ? "page" : undefined}
               className="group relative text-[14px] tracking-[0.03em] text-[#3B2A1D]"
             >
@@ -105,7 +86,7 @@ export default function Nav() {
                     : "scale-x-0 bg-[#A97956] group-hover:scale-x-100"
                 }`}
               />
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -169,17 +150,14 @@ export default function Nav() {
         aria-hidden={!menu}
       >
         {LINKS.map((l) => (
-          <a
+          <Link
             key={l.href}
             href={l.href}
-            onClick={(e) => {
-              e.preventDefault();
-              go(l.href);
-            }}
+            onClick={go}
             className="font-display py-3 text-[11vw] leading-none text-ivory"
           >
             {l.label}
-          </a>
+          </Link>
         ))}
       </div>
     </>

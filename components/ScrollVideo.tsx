@@ -23,7 +23,8 @@ export default function ScrollVideo() {
     <section
       ref={section}
       id="film"
-      className="relative flex min-h-screen w-full items-center justify-center bg-ivory px-[5vw] py-[12vh]"
+      // phones: height fits the video, small padding. tablet/desktop: original full-screen layout
+      className="relative flex w-full items-center justify-center bg-ivory px-[5vw] py-[6vh] md:min-h-screen md:py-[12vh]"
     >
       {/* full width; from tablet up the height is fixed at 76vh, on phones it keeps the video's own 16:9 shape */}
       <div className="aspect-video w-full overflow-hidden rounded-[28px] md:aspect-auto md:h-[76vh] md:rounded-[44px]">
